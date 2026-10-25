@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 Temperature Dashboard</title>
+<style>
+
+:root{color-scheme:light;--ink:#102a43;--muted:#60758a;--line:#d7e5e8;--panel:#ffffff;--navy:#102a43;--teal:#0f766e;--mint:#14b8a6;--lime:#c4f169;--coral:#fb7185;--shadow:0 18px 45px rgba(16,42,67,.09)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font:15px/1.6 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:radial-gradient(ellipse at 0% 0%,rgba(20,184,166,.15),transparent 34%),radial-gradient(ellipse at 100% 12%,rgba(196,241,105,.16),transparent 30%),#f2f8f7;min-height:100vh}
+header{position:relative;isolation:isolate;overflow:hidden;color:#f5fffd;padding:38px max(22px,calc((100vw - 1180px)/2));background:linear-gradient(115deg,#102a43 0%,#115e59 58%,#0f766e 100%);box-shadow:0 14px 36px rgba(16,42,67,.18)}header:before{content:"";position:absolute;z-index:-1;width:440px;height:440px;border:1px solid rgba(255,255,255,.13);border-radius:48% 52% 58% 42%;right:2%;top:-300px;transform:rotate(28deg);box-shadow:0 0 0 38px rgba(255,255,255,.035),0 0 0 82px rgba(255,255,255,.025)}header:after{content:"";position:absolute;z-index:-1;width:130px;height:130px;border-radius:35px;right:18%;bottom:-92px;transform:rotate(30deg);background:rgba(196,241,105,.15)}header .eyebrow{display:inline-flex;align-items:center;gap:9px;font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:#b9f3e9;font-weight:850}header .eyebrow:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 5px rgba(196,241,105,.15)}header h1{font-size:clamp(28px,4vw,42px);line-height:1.12;letter-spacing:-.045em;margin:13px 0 9px;font-weight:850}header p{margin:0;color:#d6f4ee;max-width:690px;font-size:15px}
+main{max-width:1180px;margin:30px auto;padding:0 20px 40px}.actions,.topline{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:22px}.actions>div{display:flex;gap:9px;flex-wrap:wrap}#status{display:inline-flex;align-items:center;gap:9px;color:#35566a;font-size:12px;font-weight:750;background:#fff;border:1px solid #d9e9e7;padding:10px 15px;border-radius:12px;box-shadow:0 5px 15px rgba(16,42,67,.04)}#status:before{content:"";width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 0 4px rgba(16,185,129,.12)}#status.error{color:#b42336}#status.error:before{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.12)}button,.btn{font:inherit;font-size:13px;font-weight:800;padding:11px 16px;border:1px solid transparent;border-radius:12px;cursor:pointer;background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;box-shadow:0 8px 18px rgba(15,118,110,.18);transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}button:hover,.btn:hover{transform:translateY(-2px);box-shadow:0 12px 24px rgba(15,118,110,.24);filter:saturate(1.1)}button:active,.btn:active{transform:translateY(0)}button.secondary,.btn.secondary{background:#fff;color:#24475a;border-color:#d4e5e4;box-shadow:0 4px 12px rgba(16,42,67,.04)}button.secondary:hover,.btn.secondary:hover{background:#f0fbf8;border-color:#8dd8cb}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:17px;margin-bottom:20px}.card,.panel{position:relative;background:rgba(255,255,255,.96);border:1px solid #dce9e8;border-radius:22px;padding:23px;margin-bottom:19px;box-shadow:var(--shadow);transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}.cards>.card{margin:0;overflow:hidden;min-height:155px}.cards>.card:before{content:"";position:absolute;inset:0 0 auto;height:5px;background:linear-gradient(90deg,#0f766e,#5eead4)}.cards>.card:nth-child(2):before{background:linear-gradient(90deg,#0891b2,#67e8f9)}.cards>.card:nth-child(3):before{background:linear-gradient(90deg,#f97316,#fb7185)}.cards>.card:after{content:"";position:absolute;right:-24px;bottom:-42px;width:110px;height:110px;border-radius:35px;transform:rotate(28deg);background:rgba(20,184,166,.06);pointer-events:none}.cards>.card:nth-child(2):after{background:rgba(8,145,178,.07)}.cards>.card:nth-child(3):after{background:rgba(249,115,22,.07)}.cards>.card:hover{transform:translateY(-5px);box-shadow:0 24px 50px rgba(16,42,67,.13);border-color:#b8ded8}.label{font-size:11px;letter-spacing:.09em;text-transform:uppercase;font-weight:850;color:#607b8b}.value{font-size:clamp(30px,3vw,40px);line-height:1.2;font-weight:900;letter-spacing:-.05em;margin:13px 0 9px;color:#10344b;font-variant-numeric:tabular-nums}.muted{color:var(--muted);font-size:12px}.cards>.card .muted{display:flex;align-items:center;gap:7px}.cards>.card .muted:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#14b8a6}.panel h2{margin:0 0 19px;font-size:18px;letter-spacing:-.025em;display:flex;align-items:center;gap:11px}.panel h2:before{content:"";display:block;width:5px;height:23px;border-radius:9px;background:linear-gradient(#0f766e,#5eead4)}.forecast{border:1px solid #f8d5a2;background:linear-gradient(120deg,#fff9ed,#fff 72%);box-shadow:0 14px 35px rgba(249,115,22,.09);border-left:6px solid #f97316}.forecast.rising{border-color:#fecdd3;border-left-color:#e11d48;background:linear-gradient(120deg,#fff1f2,#fff 76%)}.forecast .value{font-size:clamp(25px,3vw,34px);color:#c25a14}.forecast.rising .value{color:#be123c}.forecast #forecastDetail{font-weight:700;color:#435c6c}.forecast .muted{max-width:800px}.tablewrap{overflow:auto;border:1px solid #dce9e8;border-radius:15px}table{border-collapse:separate;border-spacing:0;width:100%;min-width:650px;font-size:13px}th,td{text-align:left;padding:14px 15px;border-bottom:1px solid #eaf1f0}th{position:sticky;top:0;background:#eaf7f4;color:#3e6572;font-size:10px;text-transform:uppercase;letter-spacing:.09em;z-index:1}tbody tr{transition:background .15s}tbody tr:hover{background:#f0fbf8}tbody tr:last-child td{border-bottom:0}td{font-variant-numeric:tabular-nums}canvas{display:block;width:100%;height:290px;cursor:crosshair;border-radius:15px;background:linear-gradient(180deg,#f8fcfb,#fff);border:1px solid #edf4f2}.panel>.muted{margin-top:10px}.footer-note{margin:25px 4px 0;padding-top:17px;border-top:1px solid #dbe8e6;color:#758b99;font-size:12px}
+@media(max-width:760px){header{padding:28px 20px}main{margin:20px auto;padding:0 14px 28px}.cards{grid-template-columns:1fr}.card,.panel{padding:18px;border-radius:17px}.actions,.topline{align-items:stretch}.actions>span{align-self:flex-start}.actions>div{width:100%}.actions button{flex:1}.value{font-size:33px}canvas{height:250px}}@media(max-width:480px){.cards{grid-template-columns:1fr}.actions>div{flex-direction:column}.actions button{width:100%}form .field{min-width:100%}.topline .btn{width:100%}canvas{height:235px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;scroll-behavior:auto!important}}
+
+
+/* Requested black theme + bracket-corner glowing telemetry cards only */
+:root{color-scheme:dark;--ink:#e8edf4;--muted:#98a5b5;--line:#282d35;--panel:#0b0b0c}
+body{color:var(--ink);background:#000}
+.cards>.card{--glow:#38bdf8;--corner:20px;position:relative;isolation:isolate;overflow:visible;background:#0b0b0c;border:0;border-radius:0;padding:22px;box-shadow:0 0 0 1px rgba(56,189,248,.06);transition:box-shadow .25s ease,transform .25s ease}
+.cards>.card:before{content:"";position:absolute;inset:0;z-index:-1;height:auto;background:
+ linear-gradient(var(--glow),var(--glow)) top left/var(--corner) 2px no-repeat,
+ linear-gradient(var(--glow),var(--glow)) top left/2px var(--corner) no-repeat,
+ linear-gradient(var(--glow),var(--glow)) top right/var(--corner) 2px no-repeat,
+ linear-gradient(var(--glow),var(--glow)) top right/2px var(--corner) no-repeat,
+ linear-gradient(var(--glow),var(--glow)) bottom left/var(--corner) 2px no-repeat,
+ linear-gradient(var(--glow),var(--glow)) bottom left/2px var(--corner) no-repeat,
+ linear-gradient(var(--glow),var(--glow)) bottom right/var(--corner) 2px no-repeat,
+ linear-gradient(var(--glow),var(--glow)) bottom right/2px var(--corner) no-repeat}
+.cards>.card:nth-child(2){--glow:#a78bfa}
+.cards>.card:nth-child(3){--glow:#fbbf24}
+.cards>.card:after{content:none}
+.cards>.card:hover{transform:translateY(-2px);border-color:transparent;box-shadow:0 0 22px -6px var(--glow),inset 0 0 28px -22px var(--glow)}
+.cards>.card .label{color:var(--glow)}
+.cards>.card .value{color:#edf2f7;text-shadow:0 0 12px color-mix(in srgb,var(--glow) 16%,transparent)}
+.cards>.card .muted{color:#9aa6b5}
+.cards>.card .muted:before{background:var(--glow)}
+.cards>.card .gauge{background:#202329}
+.cards>.card .gauge b{background:var(--glow);box-shadow:0 0 8px var(--glow)}
+/* Keep surrounding layout and content; use dark surfaces for the existing panels */
+.panel{background:#0b0b0c;border-color:#252a31;box-shadow:0 0 0 1px rgba(255,255,255,.015)}
+.panel h2{color:#edf2f7}
+.tablewrap{border-color:#252a31}
+th{background:#15171b;color:#a7b1bf;border-color:#282d35}
+td{border-color:#202329}
+tbody tr:hover{background:#111318}
+canvas{background:#050505;border-color:#282d35}
+.footer-note{border-color:#282d35;color:#8b96a5}
+#status{background:#0d1014;border-color:#282d35;color:#a7b1bf}
+button.secondary,.btn.secondary{background:#0e1116;color:#e8edf4;border-color:#303742}
+button.secondary:hover,.btn.secondary:hover{background:#151a21;border-color:#38bdf8}
+@media(prefers-reduced-motion:reduce){.cards>.card{transition:none}}
+
+</style><style id="midnight-industrial-theme">
+:root{color-scheme:dark;--ink:#e7eef8;--muted:#91a4ba;--line:#253347;--panel:#111a28;--navy:#080d16;--teal:#2dd4bf;--mint:#5eead4;--lime:#bef264;--coral:#fb7185;--shadow:0 16px 38px rgba(0,0,0,.28)}
+html,body{background:#080b12!important;color:#e7eef8!important}body{background:radial-gradient(ellipse at 8% 0%,rgba(45,212,191,.09),transparent 34%),radial-gradient(ellipse at 100% 18%,rgba(139,92,246,.09),transparent 30%),#080b12!important}
+header{background:#0b111c!important;border-bottom:1px solid #253347!important;box-shadow:none!important;padding-top:34px!important;padding-bottom:34px!important}header:before{width:360px;height:360px;right:5%;top:-240px;border:1px solid rgba(45,212,191,.25)!important;box-shadow:0 0 0 35px rgba(45,212,191,.035),0 0 0 75px rgba(45,212,191,.02)!important}header:after{background:rgba(45,212,191,.1)!important}header h1{color:#f8fafc!important;letter-spacing:-.035em!important}header p{color:#9db0c5!important}header .eyebrow{color:#5eead4!important}header .eyebrow:before{background:#5eead4!important;box-shadow:0 0 0 5px rgba(94,234,212,.12)!important}
+main{max-width:1240px!important}.actions,.topline{margin-bottom:24px!important}#status{background:#111a28!important;color:#b6c8da!important;border:1px solid #2b3a4d!important;border-radius:4px 14px 4px 14px!important;box-shadow:none!important}#status.error{color:#fda4af!important;background:#21121b!important;border-color:#6b2639!important}
+button,.btn{background:#5eead4!important;color:#06221f!important;border-radius:5px 14px 5px 14px!important;box-shadow:none!important;font-weight:850!important;border:1px solid #5eead4!important}button:hover,.btn:hover{background:#99f6e4!important;box-shadow:0 0 0 3px rgba(94,234,212,.1)!important;transform:translateY(-2px)}button.secondary,.btn.secondary{background:#111a28!important;color:#d7e4f1!important;border:1px solid #344459!important}button.secondary:hover,.btn.secondary:hover{background:#182638!important;border-color:#5eead4!important}
+.cards{gap:13px!important}.cards>.card,.cards .card{background:#111a28!important;border:1px solid #2a394d!important;border-radius:5px 18px 5px 18px!important;box-shadow:none!important;min-height:156px!important;padding:23px!important}.cards>.card:before,.cards .card:before{height:3px!important;background:#2dd4bf!important}.cards>.card:nth-child(2):before,.cards .card:nth-child(2):before{background:#60a5fa!important}.cards>.card:nth-child(3):before,.cards .card:nth-child(3):before{background:#fb7185!important}.cards>.card:nth-child(4):before{background:#c084fc!important}.cards>.card:after{width:75px!important;height:75px!important;right:-20px!important;bottom:-28px!important;border:1px solid rgba(94,234,212,.18)!important;border-radius:4px 22px 4px 22px!important;transform:rotate(25deg)!important;background:transparent!important}.cards>.card:nth-child(2):after{border-color:rgba(96,165,250,.2)!important;background:transparent!important}.cards>.card:nth-child(3):after{border-color:rgba(251,113,133,.2)!important;background:transparent!important}.cards>.card:hover,.cards .card:hover{transform:translateY(-3px)!important;border-color:#527084!important;box-shadow:0 12px 30px rgba(0,0,0,.25)!important}.label{color:#91a4ba!important;letter-spacing:.13em!important}.value{color:#f1f5f9!important;font-variant-numeric:tabular-nums!important}.cards>.card .muted:before{background:#5eead4!important}.muted,.hint{color:#91a4ba!important}
+.panel,.card{background:#0e1623!important;border:1px solid #26364a!important;border-radius:5px 20px 5px 20px!important;box-shadow:0 14px 34px rgba(0,0,0,.16)!important}.panel h2{color:#edf6ff!important}.panel h2:before{width:3px!important;border-radius:0!important;background:#5eead4!important}.forecast{background:#1b1714!important;border:1px solid #704126!important;border-left:3px solid #fb923c!important}.forecast.rising{background:#20121a!important;border-color:#743146!important;border-left-color:#fb7185!important}.forecast .value{color:#fdba74!important}.forecast.rising .value{color:#fda4af!important}#forecastDetail{color:#d5dfeb!important}
+canvas{background:#0a111c!important;border:1px solid #27364a!important;border-radius:4px 15px 4px 15px!important} .tablewrap{border:1px solid #2a394d!important;border-radius:4px 14px 4px 14px!important}table{color:#dce7f3!important}th{background:#172536!important;color:#8deadd!important;border-bottom:1px solid #34475c!important}th,td{border-bottom-color:#263447!important}tbody tr:hover{background:#172536!important}td{color:#c9d7e7!important}.footer-note{border-top-color:#263447!important;color:#71859b!important}code{color:#5eead4!important;background:#142131!important;padding:2px 5px;border-radius:4px}
+input[type=date]{background:#0a111c!important;color:#e7eef8!important;border:1px solid #344459!important;border-radius:5px 12px 5px 12px!important;color-scheme:dark!important}input[type=date]:focus{border-color:#5eead4!important;box-shadow:0 0 0 3px rgba(94,234,212,.12)!important}label{color:#a8bbcf!important}.status{background:#10241f!important;border:1px solid #24554d!important;color:#9ce9dc!important;border-radius:4px 12px 4px 12px!important}.status.error{background:#25151d!important;border-color:#703044!important;color:#fda4af!important}.empty{background:#211b11!important;border-color:#65502b!important;color:#fcd34d!important;border-radius:4px 12px 4px 12px!important}
+@media(max-width:760px){.cards>.card,.cards .card{border-radius:4px 15px 4px 15px!important}}
+</style>
+<style id="stat-box-design">
+/* top three stat boxes only: bracketed corners, per-box colour, level bar, hover glow */
+@property --s{syntax:"<length>";inherits:false;initial-value:16px}
+.cards>.card{--c:#38bdf8;--s:16px;font-family:Bahnschrift,"Segoe UI Variable","Segoe UI",system-ui,sans-serif;border:0!important;border-radius:0!important;padding:22px 22px 28px!important;min-height:160px!important;color:#eceef1;box-shadow:none!important;
+  background:
+  linear-gradient(var(--c),var(--c)) top left/var(--s) 2px no-repeat,
+  linear-gradient(var(--c),var(--c)) top left/2px var(--s) no-repeat,
+  linear-gradient(var(--c),var(--c)) top right/var(--s) 2px no-repeat,
+  linear-gradient(var(--c),var(--c)) top right/2px var(--s) no-repeat,
+  linear-gradient(var(--c),var(--c)) bottom left/var(--s) 2px no-repeat,
+  linear-gradient(var(--c),var(--c)) bottom left/2px var(--s) no-repeat,
+  linear-gradient(var(--c),var(--c)) bottom right/var(--s) 2px no-repeat,
+  linear-gradient(var(--c),var(--c)) bottom right/2px var(--s) no-repeat,
+  #0b0b0c!important;transition:--s .3s ease,box-shadow .3s ease,transform .3s ease}
+.cards>.card:nth-child(2){--c:#a78bfa}
+.cards>.card:nth-child(3){--c:#fbbf24}
+.cards>.card:before,.cards>.card:after,.cards>.card .muted:before{display:none!important}
+.cards>.card .label{font-size:13px;letter-spacing:0!important;text-transform:none;font-weight:700;color:var(--c)!important}
+.cards>.card .value{color:#eceef1!important;font-weight:800;letter-spacing:-.03em;margin:14px 0 8px}
+.cards>.card .muted{color:#8a909a!important}
+.cards>.card .gauge{position:absolute;left:22px;right:22px;bottom:14px;height:3px;background:#1c1e22;transition:height .25s ease,bottom .25s ease}
+.cards>.card .gauge b{display:block;height:100%;width:0;background:var(--c);transition:width .6s ease}
+.cards>.card:hover{--s:42px;transform:translateY(-3px)!important;border-color:transparent!important;box-shadow:0 0 30px -8px var(--c),inset 0 0 40px -22px var(--c)!important}
+.cards>.card:hover .value{text-shadow:0 0 18px color-mix(in srgb,var(--c) 45%,transparent)}
+.cards>.card:hover .gauge{height:5px;bottom:13px}
+</style>
+</head><body>
+<header><div class="eyebrow">IoT · Live monitoring</div><h1>ESP32 Temperature Dashboard</h1><p>Real-time server-room conditions, sensor history and predictive temperature alerts.</p></header>
+<main>
+<div class="actions"><span id="status">Connecting to server…</span><div><button class="secondary" onclick="loadData()">Refresh</button> <button onclick="location.href='/statistics'">View Past Statistics</button> <button class="secondary" onclick="location.href='/file.txt'">Download file.txt</button></div></div>
+<div class="cards">
+<div class="card"><div class="label">DHT11 temperature</div><div class="value" id="tdht">-- °C</div><div class="muted" id="stamp">No readings yet</div><i class="gauge"><b id="g1"></b></i></div>
+<div class="card"><div class="label">Humidity</div><div class="value" id="hum">-- %</div><div class="muted">DHT11 sensor</div><i class="gauge"><b id="g2"></b></i></div>
+<div class="card"><div class="label">DS18B20 temperature</div><div class="value" id="tds">-- °C</div><div class="muted">Second sensor</div><i class="gauge"><b id="g3"></b></i></div>
+</div>
+<section class="card forecast" id="forecastCard" style="display:none" aria-live="polite">
+  <div class="label">Critical temperature prediction</div>
+  <div class="value" id="forecastEta">--</div>
+  <div id="forecastDetail">Waiting for enough rising-temperature readings.</div>
+  <div class="muted" id="forecastTime" style="margin-top:8px"></div>
+  <div class="muted" style="margin-top:8px">Estimate is based on recent temperature trend. Actual heating can change; this is an advisory prediction, not a safety guarantee.</div>
+</section>
+<section class="panel"><h2>Temperature history <span class="muted">· latest 50 records</span></h2><canvas id="chart" width="1050" height="270"></canvas><div class="muted">Blue = DHT11; orange = DS18B20</div></section>
+<section class="panel"><h2>Saved readings <span class="muted" id="count"></span></h2><div class="tablewrap"><table><thead><tr><th>Date</th><th>Time</th><th>DHT11 temperature (°C)</th><th>DS18B20 temperature (°C)</th><th>Humidity (%)</th></tr></thead><tbody id="rows"><tr><td colspan="5">Waiting for data…</td></tr></tbody></table></div></section>
+<p class="footer-note">Keep <code>server.py</code> running. The ESP32 and this computer must be on the same Wi-Fi network. Each received reading is appended to <code>file.txt</code>.</p>
+</main>
+<script>
+let records=[];
+function dateParts(r){let d=new Date(r.timestamp);return isNaN(d)?{date:r.date||'—',time:r.time||'—'}:{date:d.toLocaleDateString(),time:d.toLocaleTimeString()}}
+function n(v){return Number.isFinite(Number(v))?Number(v).toFixed(1):'—'}
+function gauge(id,v,max){let p=Number.isFinite(Number(v))?Math.max(0,Math.min(100,Number(v)/max*100)):0;document.getElementById(id).style.width=p+'%'}
+async function loadData(){try{let res=await fetch('/api/data',{cache:'no-store'});if(!res.ok)throw Error();let data=await res.json();records=data.records||[];document.getElementById('status').textContent='Connected · refreshed '+new Date().toLocaleTimeString();document.getElementById('status').className='';render()}catch(e){let s=document.getElementById('status');s.textContent='Server unavailable. Start server.py and open http://127.0.0.1:8000';s.className='error'}}
+function render(){document.getElementById('count').textContent='('+records.length+' records)';let r=records[records.length-1];if(r){let d=dateParts(r);document.getElementById('tdht').textContent=n(r.temp_dht)+' °C';document.getElementById('tds').textContent=n(r.temp_ds)+' °C';document.getElementById('hum').textContent=n(r.humidity)+' %';document.getElementById('stamp').textContent=d.date+' · '+d.time;gauge('g1',r.temp_dht,45);gauge('g2',r.humidity,100);gauge('g3',r.temp_ds,45)}
+updatePrediction();
+let tbody=document.getElementById('rows');tbody.innerHTML=records.length?records.slice().reverse().map(r=>{let d=dateParts(r);return `<tr><td>${d.date}</td><td>${d.time}</td><td>${n(r.temp_dht)}</td><td>${n(r.temp_ds)}</td><td>${n(r.humidity)}</td></tr>`}).join(''):'<tr><td colspan="5">No readings saved yet. Send readings from the ESP32.</td></tr>';draw(records.slice(-50))}
+function linearSlope(points,key){
+  const t0=points[0]._ms;
+  const xs=points.map(p=>(p._ms-t0)/60000), ys=points.map(p=>Number(p[key]));
+  const mx=xs.reduce((a,b)=>a+b,0)/xs.length, my=ys.reduce((a,b)=>a+b,0)/ys.length;
+  let numerator=0,denominator=0;
+  for(let i=0;i<xs.length;i++){numerator+=(xs[i]-mx)*(ys[i]-my);denominator+=(xs[i]-mx)**2;}
+  return denominator ? numerator/denominator : 0; // degrees C per minute
+}
+function durationText(minutes){
+  if(!Number.isFinite(minutes)||minutes<0)return '—';
+  const total=Math.ceil(minutes), days=Math.floor(total/1440), hours=Math.floor((total%1440)/60), mins=total%60;
+  if(days>0)return `${days} day${days===1?'':'s'} ${hours} hr ${mins} min`;
+  if(hours>0)return `${hours} hr ${mins} min`;
+  return `${mins} min`;
+}
+function updatePrediction(){
+  const card=document.getElementById('forecastCard');
+  const etaEl=document.getElementById('forecastEta');
+  const detail=document.getElementById('forecastDetail');
+  const timeEl=document.getElementById('forecastTime');
+  const hide=()=>{card.style.display='none';card.classList.remove('rising')};
+  if(records.length<6){hide();return;}
+  const valid=records.map(r=>({...r,_ms:new Date(r.timestamp).getTime()}))
+    .filter(r=>Number.isFinite(r._ms)&&Number.isFinite(Number(r.temp_dht))&&Number.isFinite(Number(r.temp_ds)))
+    .sort((a,b)=>a._ms-b._ms);
+  if(valid.length<6){hide();return;}
+  const latest=valid[valid.length-1];
+  // Don't make a forecast from stale data if the ESP32 stopped sending readings.
+  if(Date.now()-latest._ms>30000){hide();return;}
+  const windowStart=latest._ms-60000;
+  const recent=valid.filter(r=>r._ms>=windowStart);
+  if(recent.length<6 || recent[recent.length-1]._ms-recent[0]._ms<12000){hide();return;}
+  const slopeD=linearSlope(recent,'temp_dht');
+  const slopeS=linearSlope(recent,'temp_ds');
+  const first=recent[0], last=recent[recent.length-1];
+  const riseD=Number(last.temp_dht)-Number(first.temp_dht);
+  const riseS=Number(last.temp_ds)-Number(first.temp_ds);
+  // Require a sustained rise from both sensors to forecast when both will trigger the critical alarm.
+  const minSlope=0.10; // degrees C per minute, filters tiny fluctuations
+  if(!(slopeD>=minSlope && slopeS>=minSlope && riseD>=0.10 && riseS>=0.10)){hide();return;}
+  const tempD=Number(latest.temp_dht), tempS=Number(latest.temp_ds);
+  const minsD=tempD>=45?0:(45-tempD)/slopeD;
+  const minsS=tempS>=45?0:(45-tempS)/slopeS;
+  const minutes=Math.max(minsD,minsS); // both sensors must reach the threshold
+  if(!Number.isFinite(minutes)||minutes>10080){hide();return;}
+  card.style.display='block';card.classList.add('rising');
+  etaEl.textContent=minutes<1?'Less than 1 minute':durationText(minutes);
+  detail.textContent=`Both sensors are trending upward. Current trend: DHT11 ${slopeD.toFixed(2)} °C/min; DS18B20 ${slopeS.toFixed(2)} °C/min.`;
+  const predicted=new Date(Date.now()+minutes*60000);
+  timeEl.textContent=`Estimated time both sensors reach 45°C: ${predicted.toLocaleString()} (approximately)`;
+}
+function draw(data){let c=document.getElementById('chart'),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);if(!data.length){x.fillStyle='#64748b';x.font='18px Arial';x.fillText('No temperature data yet',25,40);return}let vals=data.flatMap(r=>[+r.temp_dht,+r.temp_ds]).filter(Number.isFinite),lo=Math.floor(Math.min(...vals)-2),hi=Math.ceil(Math.max(...vals)+2);if(hi<=lo)hi=lo+1;let L=50,R=w-20,T=15,B=h-35;x.font='12px Arial';x.strokeStyle='#e3e9f2';x.fillStyle='#64748b';for(let i=0;i<=5;i++){let y=T+(B-T)*i/5,v=hi-(hi-lo)*i/5;x.beginPath();x.moveTo(L,y);x.lineTo(R,y);x.stroke();x.fillText(v.toFixed(0)+'°',5,y+4)}function line(k,color){x.strokeStyle=color;x.lineWidth=2.5;x.beginPath();data.forEach((r,i)=>{let v=+r[k],px=data.length===1?(L+R)/2:L+i*(R-L)/(data.length-1),py=B-(v-lo)/(hi-lo)*(B-T);if(i===0)x.moveTo(px,py);else x.lineTo(px,py)});x.stroke()}line('temp_dht','#2563eb');line('temp_ds','#ea580c');x.fillStyle='#2563eb';x.fillRect(L,h-17,14,4);x.fillStyle='#334155';x.fillText('DHT11',L+20,h-12);x.fillStyle='#ea580c';x.fillRect(L+100,h-17,14,4);x.fillStyle='#334155';x.fillText('DS18B20',L+120,h-12)}
+loadData();setInterval(loadData,5000);
+</script></body></html>

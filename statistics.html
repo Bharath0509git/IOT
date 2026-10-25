@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Past Statistics | ESP32 Temperature Dashboard</title>
+<style>
+
+:root{color-scheme:light;--ink:#102a43;--muted:#60758a;--line:#d7e5e8;--teal:#0f766e;--mint:#14b8a6;--lime:#c4f169;--shadow:0 18px 45px rgba(16,42,67,.09)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font:15px/1.6 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:radial-gradient(ellipse at 0% 0%,rgba(20,184,166,.15),transparent 34%),radial-gradient(ellipse at 100% 12%,rgba(196,241,105,.16),transparent 30%),#f2f8f7;min-height:100vh}
+header{position:relative;isolation:isolate;overflow:hidden;color:#f5fffd;padding:36px max(22px,calc((100vw - 1180px)/2));background:linear-gradient(115deg,#102a43 0%,#115e59 58%,#0f766e 100%);box-shadow:0 14px 36px rgba(16,42,67,.18)}header:before{content:"";position:absolute;z-index:-1;width:440px;height:440px;border:1px solid rgba(255,255,255,.13);border-radius:48% 52% 58% 42%;right:2%;top:-300px;transform:rotate(28deg);box-shadow:0 0 0 38px rgba(255,255,255,.035),0 0 0 82px rgba(255,255,255,.025)}header .eyebrow{display:inline-flex;align-items:center;gap:9px;font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:#b9f3e9;font-weight:850}header .eyebrow:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 5px rgba(196,241,105,.15)}header h1{margin:12px 0 8px;font-size:clamp(28px,4vw,39px);line-height:1.15;letter-spacing:-.04em;font-weight:850}header p{margin:0;color:#d6f4ee;max-width:680px;font-size:15px}
+main{max-width:1180px;margin:29px auto;padding:0 20px 40px}.topline{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:20px}.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;border:1px solid transparent;border-radius:12px;cursor:pointer;background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;text-decoration:none;font-size:13px;font-weight:800;box-shadow:0 8px 18px rgba(15,118,110,.18);transition:transform .18s ease,box-shadow .18s ease}.btn:hover{transform:translateY(-2px);box-shadow:0 12px 24px rgba(15,118,110,.24)}.btn.secondary{background:#fff;color:#24475a;border-color:#d4e5e4;box-shadow:0 4px 12px rgba(16,42,67,.04)}.btn.secondary:hover{background:#f0fbf8;border-color:#8dd8cb}.panel,.card{background:rgba(255,255,255,.96);border:1px solid #dce9e8;border-radius:22px;padding:23px;margin-bottom:19px;box-shadow:var(--shadow)}.panel h2{margin:0 0 19px;font-size:18px;letter-spacing:-.025em;display:flex;align-items:center;gap:11px}.panel h2:before{content:"";display:block;width:5px;height:23px;border-radius:9px;background:linear-gradient(#0f766e,#5eead4)}form{display:flex;align-items:end;gap:14px;flex-wrap:wrap}.field{display:flex;flex-direction:column;gap:8px;min-width:180px;flex:1}label{font-weight:800;color:#315467;font-size:12px;text-transform:uppercase;letter-spacing:.05em}input[type=date]{width:100%;padding:13px 14px;border:1px solid #cfe1df;border-radius:13px;font:inherit;color:#102a43;background:#f8fcfb;outline:none;transition:border-color .18s,box-shadow .18s}input[type=date]:focus{border-color:#0faaa0;box-shadow:0 0 0 4px rgba(20,184,166,.14)}button{font:inherit}.hint,.muted{font-size:12px;color:var(--muted)}.error{color:#b42336}.status{margin-top:14px;color:#315c65;background:#eefaf7;border:1px solid #d7efea;border-radius:12px;padding:11px 13px;font-size:13px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px}.cards .card{margin:0;position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s}.cards .card:hover{transform:translateY(-4px);box-shadow:0 22px 45px rgba(16,42,67,.12)}.cards .card:before{content:"";position:absolute;inset:0 0 auto;height:5px;background:linear-gradient(90deg,#0f766e,#5eead4)}.cards .card:nth-child(2):before{background:linear-gradient(90deg,#0891b2,#67e8f9)}.cards .card:nth-child(3):before{background:linear-gradient(90deg,#f97316,#fb7185)}.cards .card:nth-child(4):before{background:linear-gradient(90deg,#65a30d,#bef264)}.label{font-size:10px;color:var(--muted);letter-spacing:.09em;text-transform:uppercase;font-weight:850}.value{font-size:clamp(22px,2.7vw,31px);line-height:1.2;font-weight:900;letter-spacing:-.04em;margin-top:11px;color:#10344b;font-variant-numeric:tabular-nums}canvas{display:block;width:100%;height:300px;cursor:crosshair;border-radius:15px;background:linear-gradient(180deg,#f8fcfb,#fff);border:1px solid #edf4f2}.chart-note{margin-top:10px}.tablewrap{overflow:auto;border:1px solid #dce9e8;border-radius:15px}table{border-collapse:separate;border-spacing:0;width:100%;min-width:650px;font-size:13px}th,td{text-align:left;padding:13px 15px;border-bottom:1px solid #eaf1f0}th{position:sticky;top:0;background:#eaf7f4;color:#3e6572;font-size:10px;text-transform:uppercase;letter-spacing:.09em;z-index:1}tbody tr{transition:background .15s}tbody tr:hover{background:#f0fbf8}tbody tr:last-child td{border-bottom:0}td{font-variant-numeric:tabular-nums}#results{display:none}.empty{padding:16px;background:#fff8eb;border:1px solid #f7dfb0;border-radius:13px;color:#8b5b10;margin-top:15px;font-size:13px}.footer-note{margin:25px 4px 0;padding-top:17px;border-top:1px solid #dbe8e6;color:#758b99;font-size:12px}
+@media(max-width:760px){header{padding:28px 20px}main{margin:20px auto;padding:0 14px 28px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.panel,.card{padding:18px;border-radius:17px}form .field{min-width:calc(50% - 8px)}form .btn{width:100%}canvas{height:260px}}@media(max-width:480px){.cards{grid-template-columns:1fr}form .field{min-width:100%}.topline{align-items:stretch}.topline .btn{width:100%}canvas{height:240px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;scroll-behavior:auto!important}}
+
+
+/* Requested black theme + bracket-corner glowing summary cards only */
+:root{color-scheme:dark;--ink:#e8edf4;--muted:#98a5b5;--line:#282d35}
+body{color:var(--ink);background:#000}
+.panel{background:#0b0b0c;border-color:#252a31;box-shadow:0 0 0 1px rgba(255,255,255,.015)}
+.panel h2{color:#edf2f7}
+.cards .card{--glow:#38bdf8;--corner:20px;position:relative;isolation:isolate;overflow:visible;background:#0b0b0c;border:0;border-radius:0;box-shadow:0 0 0 1px rgba(56,189,248,.06);transition:box-shadow .25s ease,transform .25s ease}
+.cards .card:before{content:"";position:absolute;inset:0;z-index:-1;height:auto;background:
+ linear-gradient(var(--glow),var(--glow)) top left/var(--corner) 2px no-repeat,
+ linear-gradient(var(--glow),var(--glow)) top left/2px var(--corner) no-repeat,
+ linear-gradient(var(--glow),var(--glow)) top right/var(--corner) 2px no-repeat,
+ linear-gradient(var(--glow),var(--glow)) top right/2px var(--corner) no-repeat,
+ linear-gradient(var(--glow),var(--glow)) bottom left/var(--corner) 2px no-repeat,
+ linear-gradient(var(--glow),var(--glow)) bottom left/2px var(--corner) no-repeat,
+ linear-gradient(var(--glow),var(--glow)) bottom right/var(--corner) 2px no-repeat,
+ linear-gradient(var(--glow),var(--glow)) bottom right/2px var(--corner) no-repeat}
+.cards .card:nth-child(2){--glow:#a78bfa}
+.cards .card:nth-child(3){--glow:#fbbf24}
+.cards .card:nth-child(4){--glow:#34d399}
+.cards .card:after{content:none}
+.cards .card:hover{transform:translateY(-2px);box-shadow:0 0 22px -6px var(--glow),inset 0 0 28px -22px var(--glow)}
+.cards .label{color:var(--glow)}
+.cards .value{color:#edf2f7;text-shadow:0 0 12px color-mix(in srgb,var(--glow) 16%,transparent)}
+.tablewrap{border-color:#252a31}
+th{background:#15171b;color:#a7b1bf;border-color:#282d35}
+td{border-color:#202329}
+tbody tr:hover{background:#111318}
+canvas{background:#050505;border-color:#282d35}
+input[type=date]{background:#0e1116;color:#e8edf4;border-color:#303742;color-scheme:dark}
+label{color:#b8c2cf}
+.status{background:#101d1a;color:#9ce9d6;border-color:#24534b}
+.btn.secondary{background:#0e1116;color:#e8edf4;border-color:#303742}
+.footer-note{border-color:#282d35;color:#8b96a5}
+@media(prefers-reduced-motion:reduce){.cards .card{transition:none}}
+
+</style>
+<style id="midnight-industrial-theme">
+:root{color-scheme:dark;--ink:#e7eef8;--muted:#91a4ba;--line:#253347;--panel:#111a28;--navy:#080d16;--teal:#2dd4bf;--mint:#5eead4;--lime:#bef264;--coral:#fb7185;--shadow:0 16px 38px rgba(0,0,0,.28)}
+html,body{background:#080b12!important;color:#e7eef8!important}body{background:radial-gradient(ellipse at 8% 0%,rgba(45,212,191,.09),transparent 34%),radial-gradient(ellipse at 100% 18%,rgba(139,92,246,.09),transparent 30%),#080b12!important}
+header{background:#0b111c!important;border-bottom:1px solid #253347!important;box-shadow:none!important;padding-top:34px!important;padding-bottom:34px!important}header:before{width:360px;height:360px;right:5%;top:-240px;border:1px solid rgba(45,212,191,.25)!important;box-shadow:0 0 0 35px rgba(45,212,191,.035),0 0 0 75px rgba(45,212,191,.02)!important}header:after{background:rgba(45,212,191,.1)!important}header h1{color:#f8fafc!important;letter-spacing:-.035em!important}header p{color:#9db0c5!important}header .eyebrow{color:#5eead4!important}header .eyebrow:before{background:#5eead4!important;box-shadow:0 0 0 5px rgba(94,234,212,.12)!important}
+main{max-width:1240px!important}.actions,.topline{margin-bottom:24px!important}#status{background:#111a28!important;color:#b6c8da!important;border:1px solid #2b3a4d!important;border-radius:4px 14px 4px 14px!important;box-shadow:none!important}#status.error{color:#fda4af!important;background:#21121b!important;border-color:#6b2639!important}
+button,.btn{background:#5eead4!important;color:#06221f!important;border-radius:5px 14px 5px 14px!important;box-shadow:none!important;font-weight:850!important;border:1px solid #5eead4!important}button:hover,.btn:hover{background:#99f6e4!important;box-shadow:0 0 0 3px rgba(94,234,212,.1)!important;transform:translateY(-2px)}button.secondary,.btn.secondary{background:#111a28!important;color:#d7e4f1!important;border:1px solid #344459!important}button.secondary:hover,.btn.secondary:hover{background:#182638!important;border-color:#5eead4!important}
+.cards{gap:13px!important}.cards>.card,.cards .card{background:#111a28!important;border:1px solid #2a394d!important;border-radius:5px 18px 5px 18px!important;box-shadow:none!important;min-height:156px!important;padding:23px!important}.cards>.card:before,.cards .card:before{height:3px!important;background:#2dd4bf!important}.cards>.card:nth-child(2):before,.cards .card:nth-child(2):before{background:#60a5fa!important}.cards>.card:nth-child(3):before,.cards .card:nth-child(3):before{background:#fb7185!important}.cards>.card:nth-child(4):before{background:#c084fc!important}.cards>.card:after{width:75px!important;height:75px!important;right:-20px!important;bottom:-28px!important;border:1px solid rgba(94,234,212,.18)!important;border-radius:4px 22px 4px 22px!important;transform:rotate(25deg)!important;background:transparent!important}.cards>.card:nth-child(2):after{border-color:rgba(96,165,250,.2)!important;background:transparent!important}.cards>.card:nth-child(3):after{border-color:rgba(251,113,133,.2)!important;background:transparent!important}.cards>.card:hover,.cards .card:hover{transform:translateY(-3px)!important;border-color:#527084!important;box-shadow:0 12px 30px rgba(0,0,0,.25)!important}.label{color:#91a4ba!important;letter-spacing:.13em!important}.value{color:#f1f5f9!important;font-variant-numeric:tabular-nums!important}.cards>.card .muted:before{background:#5eead4!important}.muted,.hint{color:#91a4ba!important}
+.panel,.card{background:#0e1623!important;border:1px solid #26364a!important;border-radius:5px 20px 5px 20px!important;box-shadow:0 14px 34px rgba(0,0,0,.16)!important}.panel h2{color:#edf6ff!important}.panel h2:before{width:3px!important;border-radius:0!important;background:#5eead4!important}.forecast{background:#1b1714!important;border:1px solid #704126!important;border-left:3px solid #fb923c!important}.forecast.rising{background:#20121a!important;border-color:#743146!important;border-left-color:#fb7185!important}.forecast .value{color:#fdba74!important}.forecast.rising .value{color:#fda4af!important}#forecastDetail{color:#d5dfeb!important}
+canvas{background:#0a111c!important;border:1px solid #27364a!important;border-radius:4px 15px 4px 15px!important} .tablewrap{border:1px solid #2a394d!important;border-radius:4px 14px 4px 14px!important}table{color:#dce7f3!important}th{background:#172536!important;color:#8deadd!important;border-bottom:1px solid #34475c!important}th,td{border-bottom-color:#263447!important}tbody tr:hover{background:#172536!important}td{color:#c9d7e7!important}.footer-note{border-top-color:#263447!important;color:#71859b!important}code{color:#5eead4!important;background:#142131!important;padding:2px 5px;border-radius:4px}
+input[type=date]{background:#0a111c!important;color:#e7eef8!important;border:1px solid #344459!important;border-radius:5px 12px 5px 12px!important;color-scheme:dark!important}input[type=date]:focus{border-color:#5eead4!important;box-shadow:0 0 0 3px rgba(94,234,212,.12)!important}label{color:#a8bbcf!important}.status{background:#10241f!important;border:1px solid #24554d!important;color:#9ce9dc!important;border-radius:4px 12px 4px 12px!important}.status.error{background:#25151d!important;border-color:#703044!important;color:#fda4af!important}.empty{background:#211b11!important;border-color:#65502b!important;color:#fcd34d!important;border-radius:4px 12px 4px 12px!important}
+@media(max-width:760px){.cards>.card,.cards .card{border-radius:4px 15px 4px 15px!important}}
+</style>
+
+</head>
+<body>
+<header><div class="eyebrow">Analytics · Historical data</div><h1>Past Statistics</h1><p>Explore temperature and humidity trends across a date range you choose.</p></header>
+<main>
+<div class="topline"><a class="btn secondary" href="/">← Back to Live Dashboard</a><span class="muted">Historical analytics · Saved sensor readings</span></div>
+<section class="panel">
+<h2 style="margin-top:0">Choose date range</h2>
+<form id="dateForm">
+  <div class="field"><label for="fromDate">From date</label><input id="fromDate" name="fromDate" type="date" required></div>
+  <div class="field"><label for="toDate">To date</label><input id="toDate" name="toDate" type="date" required></div>
+  <button class="btn" type="submit">Show Statistics</button>
+</form>
+<div class="hint" style="margin-top:12px">Both selected dates are included. Choose a range, then explore the temperature and humidity graphs below.</div>
+<div id="status" class="status" aria-live="polite">Loading saved readings…</div>
+<div id="empty" class="empty" style="display:none"></div>
+</section>
+<div id="results">
+  <div class="cards" style="margin-bottom:16px">
+    <div class="card"><div class="label">Records in range</div><div class="value" id="recordCount">0</div></div>
+    <div class="card"><div class="label">Average DHT11</div><div class="value" id="avgDht">—</div></div>
+    <div class="card"><div class="label">Average DS18B20</div><div class="value" id="avgDs">—</div></div>
+    <div class="card"><div class="label">Average humidity</div><div class="value" id="avgHum">—</div></div>
+  </div>
+  <section class="panel"><h2>Temperature over time</h2><canvas id="temperatureChart" aria-label="DHT11 and DS18B20 temperature graph"></canvas><div class="muted chart-note">Blue = DHT11 · Orange = DS18B20 · Horizontal axis = time of readings · Vertical axis = temperature (°C)</div></section>
+  <section class="panel"><h2>Humidity over time</h2><canvas id="humidityChart" aria-label="Humidity graph"></canvas><div class="muted chart-note">Green = DHT11 humidity · Horizontal axis = time of readings · Vertical axis = relative humidity (%)</div></section>
+  <section class="panel"><h2>Readings in selected range</h2><div class="tablewrap"><table><thead><tr><th>Date</th><th>Time</th><th>DHT11 (°C)</th><th>DS18B20 (°C)</th><th>Humidity (%)</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+</div>
+<p class="footer-note">Statistics are calculated from readings saved by your local Python server. Keep the server running while viewing history.</p>
+</main>
+<script>
+let allRecords=[];
+const $=id=>document.getElementById(id);
+const todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const dateOffset=(days)=>{const d=new Date();d.setDate(d.getDate()-days);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const fmt=(v,d=1)=>Number.isFinite(Number(v))?Number(v).toFixed(d):'—';
+function recordDate(r){return String(r.date|| (r.timestamp||'').slice(0,10)).slice(0,10)}
+function recordTime(r){return r.time||((r.timestamp||'').slice(11,19))||'—'}
+async function loadRecords(){try{const res=await fetch('/api/data',{cache:'no-store'});if(!res.ok)throw new Error(`Server returned ${res.status}`);const data=await res.json();allRecords=Array.isArray(data.records)?data.records:[];$('status').textContent=`Connected. ${allRecords.length} saved record(s) available.`;$('status').className='status';}catch(e){$('status').textContent='Could not load saved readings. Check that server.py is running.';$('status').className='status error';}}
+function avg(arr,key){const vals=arr.map(r=>Number(r[key])).filter(Number.isFinite);return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:NaN}
+function renderStats(rows){$('results').style.display='block';$('recordCount').textContent=rows.length;$('avgDht').textContent=fmt(avg(rows,'temp_dht'))+' °C';$('avgDs').textContent=fmt(avg(rows,'temp_ds'))+' °C';$('avgHum').textContent=fmt(avg(rows,'humidity'))+' %';
+$('rows').innerHTML=rows.slice().reverse().map(r=>`<tr><td>${escapeHtml(recordDate(r))}</td><td>${escapeHtml(recordTime(r))}</td><td>${fmt(r.temp_dht,2)}</td><td>${fmt(r.temp_ds,2)}</td><td>${fmt(r.humidity,2)}</td></tr>`).join('');
+drawChart('temperatureChart',rows,[{key:'temp_dht',label:'DHT11',color:'#2563eb'},{key:'temp_ds',label:'DS18B20',color:'#ea580c'}],'°C');
+drawChart('humidityChart',rows,[{key:'humidity',label:'Humidity',color:'#16a34a'}],'%');}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function drawChart(id,rows,series,unit){const canvas=$(id),rect=canvas.getBoundingClientRect(),ratio=window.devicePixelRatio||1;const width=Math.max(320,Math.floor(rect.width)),height=300;canvas.width=width*ratio;canvas.height=height*ratio;const ctx=canvas.getContext('2d');ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,width,height);const left=55,right=width-20,top=18,bottom=height-48;const values=rows.flatMap(r=>series.map(s=>Number(r[s.key])).filter(Number.isFinite));if(!rows.length||!values.length){ctx.fillStyle='#64748b';ctx.font='15px Arial';ctx.fillText('No readings to graph for this date range.',18,40);return}let min=Math.min(...values),max=Math.max(...values);if(min===max){min-=1;max+=1}else{const pad=(max-min)*.12;min-=pad;max+=pad}ctx.font='12px Arial';ctx.strokeStyle='#e3e9f2';ctx.fillStyle='#64748b';ctx.lineWidth=1;for(let i=0;i<=5;i++){const y=top+(bottom-top)*i/5,val=max-(max-min)*i/5;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();ctx.fillText(val.toFixed(1)+unit,5,y+4)}
+const xAt=i=>rows.length===1?(left+right)/2:left+i*(right-left)/(rows.length-1);series.forEach(s=>{ctx.beginPath();ctx.strokeStyle=s.color;ctx.lineWidth=2.5;let started=false;rows.forEach((r,i)=>{const v=Number(r[s.key]);if(!Number.isFinite(v))return;const x=xAt(i),y=bottom-(v-min)/(max-min)*(bottom-top);if(!started){ctx.moveTo(x,y);started=true}else ctx.lineTo(x,y)});ctx.stroke();rows.forEach((r,i)=>{const v=Number(r[s.key]);if(!Number.isFinite(v))return;const x=xAt(i),y=bottom-(v-min)/(max-min)*(bottom-top);ctx.beginPath();ctx.fillStyle=s.color;ctx.arc(x,y,2.4,0,Math.PI*2);ctx.fill()})});
+ctx.fillStyle='#64748b';ctx.font='11px Arial';const labels=rows.length<=5?rows.map((r,i)=>i):[0,Math.floor((rows.length-1)/2),rows.length-1];const unique=[...new Set(labels)];unique.forEach(i=>{let label=recordDate(rows[i])+' '+recordTime(rows[i]).slice(0,5);if(label.length>17)label=label.slice(5);const x=xAt(i);ctx.fillText(label,Math.max(left,Math.min(right-80,x-28)),height-28)});let lx=left;series.forEach(s=>{ctx.fillStyle=s.color;ctx.fillRect(lx,height-12,13,3);ctx.fillStyle='#334155';ctx.fillText(s.label,lx+18,height-8);lx+=Math.max(95,s.label.length*8+35)})}
+$('dateForm').addEventListener('submit',e=>{e.preventDefault();const from=$('fromDate').value,to=$('toDate').value;if(!from||!to){$('status').textContent='Please select both dates.';return}if(from>to){$('status').textContent='From date must be on or before To date.';$('status').className='status error';$('results').style.display='none';return}const selected=allRecords.filter(r=>{const d=recordDate(r);return d>=from&&d<=to}).sort((a,b)=>String(a.timestamp||a.date+'T'+a.time).localeCompare(String(b.timestamp||b.date+'T'+b.time)));$('status').textContent=`Showing ${selected.length} record(s) from ${from} through ${to}.`;$('status').className='status';$('empty').style.display=selected.length?'none':'block';$('empty').textContent='No saved readings were found for those dates. Choose another range or wait for more readings to be saved.';if(selected.length)renderStats(selected);else $('results').style.display='none'});
+window.addEventListener('resize',()=>{if($('results').style.display==='block')$('dateForm').requestSubmit()});
+$('fromDate').value=dateOffset(7);$('toDate').value=todayLocal();
+loadRecords().then(()=>{$('dateForm').requestSubmit()});
+</script>
+</body></html>
