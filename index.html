@@ -89,7 +89,7 @@ input[type=date]{background:#0a111c!important;color:#e7eef8!important;border:1px
 </head><body>
 <header><div class="eyebrow">IoT · Live monitoring</div><h1>ESP32 Temperature Dashboard</h1><p>Real-time server-room conditions, sensor history and predictive temperature alerts.</p></header>
 <main>
-<div class="actions"><span id="status">Connecting to server…</span><div><button class="secondary" onclick="loadData()">Refresh</button> <button onclick="location.href='/statistics'">View Past Statistics</button> <button class="secondary" onclick="location.href='/file.txt'">Download file.txt</button></div></div>
+<div class="actions"><span id="status">Connecting to server…</span><div><button class="secondary" onclick="loadData()">Refresh</button> <button onclick="location.href='/statistics'">View Past Statistics</button> <span class="btn secondary" style="cursor:default;opacity:0.9">SQLite DB & MQTT</span></div></div>
 <div class="cards">
 <div class="card"><div class="label">DHT11 temperature</div><div class="value" id="tdht">-- °C</div><div class="muted" id="stamp">No readings yet</div><i class="gauge"><b id="g1"></b></i></div>
 <div class="card"><div class="label">Humidity</div><div class="value" id="hum">-- %</div><div class="muted">DHT11 sensor</div><i class="gauge"><b id="g2"></b></i></div>
@@ -104,7 +104,7 @@ input[type=date]{background:#0a111c!important;color:#e7eef8!important;border:1px
 </section>
 <section class="panel"><h2>Temperature history <span class="muted">· latest 50 records</span></h2><canvas id="chart" width="1050" height="270"></canvas><div class="muted">Blue = DHT11; orange = DS18B20</div></section>
 <section class="panel"><h2>Saved readings <span class="muted" id="count"></span></h2><div class="tablewrap"><table><thead><tr><th>Date</th><th>Time</th><th>DHT11 temperature (°C)</th><th>DS18B20 temperature (°C)</th><th>Humidity (%)</th></tr></thead><tbody id="rows"><tr><td colspan="5">Waiting for data…</td></tr></tbody></table></div></section>
-<p class="footer-note">Keep <code>server.py</code> running. The ESP32 and this computer must be on the same Wi-Fi network. Each received reading is appended to <code>file.txt</code>.</p>
+<p class="footer-note">Keep <code>server.py</code> running. Telemetry is streamed over <strong>MQTT (port 1883)</strong> and stored in a persistent <strong>SQLite database (<code>iot_monitor.db</code>)</strong> with offline buffer recovery.</p>
 </main>
 <script>
 let records=[];

@@ -1,5 +1,5 @@
 #include <WiFi.h>
-#include <HTTPClient.h>
+#include <PubSubClient.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <DHT.h>
@@ -7,13 +7,16 @@
 #include <DallasTemperature.h>
 #include <math.h>
 
-// ========== WIFI SETTINGS ==========
-const char* WIFI_SSID = "vivo X300";
+// ========== WIFI & MQTT SETTINGS ==========
+const char* WIFI_SSID     = "vivo X300";
 const char* WIFI_PASSWORD = "88888888";
 
-// Replace with your computer's IPv4 address from ipconfig
-const char* SERVER_URL =
-    "http://10.217.145.101:8000/api/data";
+// Replace with your computer's LAN IPv4 address (from ipconfig)
+const char* MQTT_SERVER   = "10.217.145.101";
+const int   MQTT_PORT     = 1883;
+
+const char* MQTT_DATA_TOPIC   = "iot/temperature/data";
+const char* MQTT_STATUS_TOPIC = "iot/temperature/status";
 
 // ========== SENSOR PINS ==========
 #define DHTPIN 4
@@ -33,10 +36,12 @@ const char* SERVER_URL =
 #define LCD_SCL 19
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
-
 DHT dht(DHTPIN, DHTTYPE);
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature ds18b20(&oneWire);
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 
 // ========== TEMPERATURE THRESHOLDS ==========
 #define HIGH_TEMP 32.0
@@ -44,55 +49,102 @@ DallasTemperature ds18b20(&oneWire);
 #define VERY_HIGH_TEMP 45.0
 #define MAX_DIFFERENCE 5.0
 
-// ========== TIMING ==========
-const unsigned long FAULT_CONFIRM_TIME = 3600000UL;
-const unsigned long BLINK_INTERVAL = 500UL;
-const unsigned long READ_INTERVAL = 2500UL;
-const unsigned long HIGH_TEMP_CONFIRM_TIME = 10000UL;
+// ========== TIMING (NON-BLOCKING) ==========
+// 1. Mismatch Fault: Reduced from 1 hour to 5 minutes as requested
+const unsigned long FAULT_CONFIRM_TIME = 300000UL;   // 5 minutes (300,000 ms)
+const unsigned long BLINK_INTERVAL     = 500UL;
+const unsigned long READ_INTERVAL      = 2500UL;     // 2.5 seconds
+const unsigned long HIGH_TEMP_CONFIRM_TIME = 10000UL; // 10 seconds debounce
+
+// 2. Stagnation / Frozen Sensor Check: Must change by >= 0.5°C within 5 minutes
+const unsigned long STAGNATION_TIME     = 300000UL;   // 5 minutes
+const float MIN_STAGNATION_DELTA        = 0.5;        // Minimum required temperature variation (°C)
 
 const unsigned long WARNING_FLASH_INTERVAL = 2500UL;
 const unsigned long WARNING_FLASH_DURATION = 150UL;
 
-const unsigned long BUZZER_START_DELAY = 2000UL;
+const unsigned long BUZZER_START_DELAY   = 2000UL;
 const unsigned long BUZZER_BEEP_INTERVAL = 1000UL;
 const unsigned long BUZZER_BEEP_DURATION = 200UL;
 
-const unsigned long WIFI_RETRY_INTERVAL = 10000UL;
+const unsigned long WIFI_RETRY_INTERVAL  = 8000UL;
+const unsigned long MQTT_RETRY_INTERVAL  = 5000UL;
 
 // ========== SYSTEM STATES ==========
-bool highTemperature = false;
+bool highTemperature     = false;
 bool veryHighTemperature = false;
-bool faultConfirmed = false;
-bool sensorReadingFailed = false;
-bool mismatchActive = false;
-bool highTempTimerActive = false;
+bool faultConfirmed       = false;
+bool sensorReadingFailed  = false;
+bool mismatchActive       = false;
+bool highTempTimerActive  = false;
+bool stagnationError      = false;
 
-bool redLedState = false;
-bool yellowLedState = false;
-bool buzzerState = false;
-bool buzzerWarningActive = false;
+bool redLedState          = false;
+bool yellowLedState       = false;
+bool buzzerState          = false;
+bool buzzerWarningActive  = false;
 
-unsigned long mismatchStartTime = 0;
-unsigned long highTempStartTime = 0;
-unsigned long previousReadTime = 0;
-unsigned long previousBlinkTime = 0;
+unsigned long mismatchStartTime   = 0;
+unsigned long highTempStartTime   = 0;
+unsigned long previousReadTime    = 0;
+unsigned long previousBlinkTime   = 0;
 
-unsigned long warningFlashStart = 0;
+unsigned long warningFlashStart   = 0;
 unsigned long previousWarningFlash = 0;
 
-unsigned long buzzerWarningStart = 0;
-unsigned long previousBuzzerTime = 0;
+unsigned long buzzerWarningStart  = 0;
+unsigned long previousBuzzerTime  = 0;
+
 unsigned long previousWiFiAttempt = 0;
+unsigned long previousMQTTAttempt = 0;
+
+// Stagnation / Frozen Sensor tracking
+unsigned long stagnationStartTime = 0;
+float stagnationBaseDHT           = 0.0;
+float stagnationBaseDS            = 0.0;
+
+// ========== OFFLINE BUFFER (ZERO DATA LOSS ON WI-FI FLICKER) ==========
+// Buffers up to 120 readings (~5 minutes of readings at 2.5s intervals) during network outage
+struct OfflineReading {
+  float tempDHT;
+  float tempDS;
+  float humidity;
+  char  status[16];
+};
+
+#define OFFLINE_BUFFER_CAPACITY 120
+OfflineReading offlineBuffer[OFFLINE_BUFFER_CAPACITY];
+int bufferHead  = 0;
+int bufferTail  = 0;
+int bufferCount = 0;
+
+void bufferReading(float dhtVal, float dsVal, float humVal, const char* statusStr) {
+  offlineBuffer[bufferHead].tempDHT  = dhtVal;
+  offlineBuffer[bufferHead].tempDS   = dsVal;
+  offlineBuffer[bufferHead].humidity = humVal;
+  strncpy(offlineBuffer[bufferHead].status, statusStr, 15);
+  offlineBuffer[bufferHead].status[15] = '\0';
+
+  bufferHead = (bufferHead + 1) % OFFLINE_BUFFER_CAPACITY;
+  if (bufferCount < OFFLINE_BUFFER_CAPACITY) {
+    bufferCount++;
+  } else {
+    // Buffer full: drop oldest record to make room for newest
+    bufferTail = (bufferTail + 1) % OFFLINE_BUFFER_CAPACITY;
+  }
+  Serial.print("[BUFFER] Network down: Reading saved to offline cache (count: ");
+  Serial.print(bufferCount);
+  Serial.println(")");
+}
 
 // ========== RELAY FUNCTIONS ==========
-// Your requested relay control functions
 void relayOn() {
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);  // LOW = relay ON
+  digitalWrite(RELAY_PIN, LOW);  // Active-LOW relay turns ON
 }
 
 void relayOff() {
-  pinMode(RELAY_PIN, INPUT);     // Released = relay OFF
+  pinMode(RELAY_PIN, INPUT);     // High impedance turns relay OFF
 }
 
 // ========== LCD FUNCTION ==========
@@ -108,71 +160,106 @@ void showLCD(const char* line1, const char* line2) {
   lcd.print(line2);
 }
 
-// ========== WIFI CONNECTION ==========
+// ========== WI-FI & MQTT CONNECTION ==========
 void maintainWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
     return;
   }
 
   unsigned long now = millis();
-
-  if (previousWiFiAttempt == 0 ||
-      now - previousWiFiAttempt >= WIFI_RETRY_INTERVAL) {
-
+  if (previousWiFiAttempt == 0 || now - previousWiFiAttempt >= WIFI_RETRY_INTERVAL) {
     previousWiFiAttempt = now;
-
-    Serial.println("Connecting to WiFi...");
+    Serial.println("[WIFI] Connecting to Wi-Fi...");
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   }
 }
 
-// ========== SEND READINGS TO COMPUTER ==========
-void sendToDashboard(float tempDHT,
-                     float tempDS,
-                     float humidity) {
+void flushOfflineBuffer();
 
+void maintainMQTT() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Dashboard: WiFi disconnected; reading not sent.");
+    return;
+  }
+  if (mqttClient.connected()) {
+    mqttClient.loop();
     return;
   }
 
-  HTTPClient http;
-  http.setTimeout(1500);
+  unsigned long now = millis();
+  if (previousMQTTAttempt == 0 || now - previousMQTTAttempt >= MQTT_RETRY_INTERVAL) {
+    previousMQTTAttempt = now;
+    Serial.print("[MQTT] Connecting to Broker at ");
+    Serial.print(MQTT_SERVER);
+    Serial.print(":");
+    Serial.println(MQTT_PORT);
 
-  if (!http.begin(SERVER_URL)) {
-    Serial.println("Dashboard: HTTP initialization failed.");
-    return;
+    String clientId = "ESP32_TempMonitor_" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    if (mqttClient.connect(clientId.c_str())) {
+      Serial.println("[MQTT] Connected successfully to MQTT Broker!");
+      mqttClient.publish(MQTT_STATUS_TOPIC, "ONLINE", true);
+      // Immediately flush any offline buffered readings
+      flushOfflineBuffer();
+    } else {
+      Serial.print("[MQTT] Connection failed, rc=");
+      Serial.println(mqttClient.state());
+    }
   }
+}
 
-  http.addHeader("Content-Type", "application/json");
+// ========== TRANSMIT DATA VIA MQTT ==========
+bool publishMQTT(float tempDHT, float tempDS, float humidity, const char* statusStr, bool isBuffered) {
+  if (!mqttClient.connected()) {
+    return false;
+  }
 
   String json = "{\"temp_dht\":" + String(tempDHT, 2) +
-                ",\"temp_ds\":" + String(tempDS, 2) +
-                ",\"humidity\":" + String(humidity, 2) + "}";
-
-  int responseCode = http.POST(json);
-  Serial.print("Dashboard HTTP status: ");
-  Serial.println(responseCode);
-
-  String response = http.getString();
-  Serial.print("Dashboard response: ");
-  Serial.println(response);
-
-  if (responseCode >= 200 && responseCode < 300) {
-    Serial.println("Dashboard: Reading saved successfully.");
-  } else {
-    Serial.print("Dashboard HTTP error: ");
-    Serial.println(responseCode);
+                ",\"temp_ds\":"  + String(tempDS, 2) +
+                ",\"humidity\":" + String(humidity, 2) +
+                ",\"status\":\"" + String(statusStr) + "\"";
+  if (isBuffered) {
+    json += ",\"buffered\":true";
   }
+  json += "}";
 
-  http.end();
+  // Publish with QoS 1 to guarantee delivery
+  return mqttClient.publish(MQTT_DATA_TOPIC, json.c_str(), false);
+}
+
+void flushOfflineBuffer() {
+  if (bufferCount == 0) return;
+  Serial.print("[BUFFER] Flushing ");
+  Serial.print(bufferCount);
+  Serial.println(" offline buffered readings over MQTT...");
+
+  while (bufferCount > 0 && mqttClient.connected()) {
+    OfflineReading& r = offlineBuffer[bufferTail];
+    bool ok = publishMQTT(r.tempDHT, r.tempDS, r.humidity, r.status, true);
+    if (!ok) break;
+
+    bufferTail = (bufferTail + 1) % OFFLINE_BUFFER_CAPACITY;
+    bufferCount--;
+    delay(15); // Short pacing between burst packets
+  }
+  Serial.println("[BUFFER] Offline cache flush complete.");
+}
+
+void sendTelemetry(float tempDHT, float tempDS, float humidity, const char* statusStr) {
+  if (WiFi.status() == WL_CONNECTED && mqttClient.connected()) {
+    // Flush any pending buffer first to maintain strict chronological order
+    if (bufferCount > 0) {
+      flushOfflineBuffer();
+    }
+    publishMQTT(tempDHT, tempDS, humidity, statusStr, false);
+  } else {
+    // Network or MQTT down: buffer locally to prevent message loss
+    bufferReading(tempDHT, tempDS, humidity, statusStr);
+  }
 }
 
 // ========== SETUP ==========
 void setup() {
   Serial.begin(115200);
 
-  // Initialize relay in OFF state
   relayOff();
 
   pinMode(BUZZER_PIN, OUTPUT);
@@ -193,15 +280,17 @@ void setup() {
   lcd.init();
   lcd.backlight();
 
-  showLCD("Temperature", "Starting...");
+  showLCD("IoT Temperature", "Starting MQTT...");
   delay(1000);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   previousWiFiAttempt = millis();
 
-  Serial.println("Dual Sensor Monitoring Started");
-  Serial.println("Connecting to WiFi...");
+  mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+  mqttClient.setBufferSize(512);
+
+  Serial.println("Dual Sensor Monitoring Initialized (MQTT Mode)");
 }
 
 // ========== MAIN LOOP ==========
@@ -209,220 +298,188 @@ void loop() {
   unsigned long now = millis();
 
   maintainWiFi();
+  maintainMQTT();
 
   // Read sensors every 2.5 seconds
-  if (previousReadTime == 0 ||
-      now - previousReadTime >= READ_INTERVAL) {
-
+  if (previousReadTime == 0 || now - previousReadTime >= READ_INTERVAL) {
     previousReadTime = now;
 
     float humidity = dht.readHumidity();
-    float tempDHT = dht.readTemperature();
+    float tempDHT  = dht.readTemperature();
 
     ds18b20.requestTemperatures();
-    float tempDS = ds18b20.getTempCByIndex(0);
+    float tempDS   = ds18b20.getTempCByIndex(0);
 
-    bool dhtValid =
-        !isnan(tempDHT) &&
-        !isnan(humidity) &&
-        tempDHT >= 0.0 &&
-        tempDHT <= 50.0 &&
-        humidity >= 0.0 &&
-        humidity <= 100.0;
+    bool dhtValid = !isnan(tempDHT) && !isnan(humidity) &&
+                    tempDHT >= 0.0 && tempDHT <= 50.0 &&
+                    humidity >= 0.0 && humidity <= 100.0;
 
-    bool dsValid =
-        tempDS != DEVICE_DISCONNECTED_C &&
-        isfinite(tempDS) &&
-        tempDS >= -55.0 &&
-        tempDS <= 125.0;
+    bool dsValid  = tempDS != DEVICE_DISCONNECTED_C && isfinite(tempDS) &&
+                    tempDS >= -55.0 && tempDS <= 125.0;
 
     Serial.println("\n--- Sensor Readings ---");
-
     if (dhtValid) {
-      Serial.print("DHT11: ");
-      Serial.print(tempDHT);
-      Serial.print(" C | Humidity: ");
-      Serial.print(humidity);
-      Serial.println(" %");
+      Serial.print("DHT11: "); Serial.print(tempDHT); Serial.print(" C | Humidity: "); Serial.print(humidity); Serial.println(" %");
     } else {
       Serial.println("SENSOR FAULT: DHT11 reading invalid!");
     }
 
     if (dsValid) {
-      Serial.print("DS18B20: ");
-      Serial.print(tempDS);
-      Serial.println(" C");
+      Serial.print("DS18B20: "); Serial.print(tempDS); Serial.println(" C");
     } else {
       Serial.println("SENSOR FAULT: DS18B20 reading invalid!");
     }
 
-    // Save valid sensor readings to the dashboard.
-    // The computer records the date and time.
-    if (dhtValid && dsValid) {
-      sendToDashboard(tempDHT, tempDS, humidity);
-    }
+    // Determine current status string
+    const char* currentStatus = "NORMAL";
 
-    // ========== INVALID SENSOR READINGS ==========
+    // ========== FAULT CHECK 1: INVALID SENSOR READING ==========
     if (!dhtValid || !dsValid) {
       sensorReadingFailed = true;
-      faultConfirmed = true;
-      mismatchActive = false;
+      faultConfirmed      = true;
+      mismatchActive      = false;
       highTempTimerActive = false;
-
-      highTemperature = false;
+      highTemperature     = false;
       veryHighTemperature = false;
+      stagnationError     = false;
 
+      currentStatus = "SENSOR_FAULT";
       Serial.println("SENSOR FAULT: Check connections!");
       showLCD("SENSOR FAULT!", "Check connections");
     }
-
     else {
       sensorReadingFailed = false;
-
       float difference = fabs(tempDHT - tempDS);
 
       Serial.print("Temperature difference: ");
       Serial.print(difference);
       Serial.println(" C");
 
-      // ========== VERY HIGH TEMPERATURE ==========
-      // Both valid sensors must exceed 45 C.
-      veryHighTemperature =
-          (tempDHT > VERY_HIGH_TEMP &&
-           tempDS > VERY_HIGH_TEMP);
+      // ========== 2. STAGNATION / FROZEN SENSOR CHECK ==========
+      // If temperature does not change by at least 0.5°C over 5 minutes -> flag error
+      if (stagnationStartTime == 0) {
+        stagnationStartTime = now;
+        stagnationBaseDHT   = tempDHT;
+        stagnationBaseDS    = tempDS;
+      }
+
+      float dhtDelta = fabs(tempDHT - stagnationBaseDHT);
+      float dsDelta  = fabs(tempDS - stagnationBaseDS);
+
+      if (dhtDelta >= MIN_STAGNATION_DELTA || dsDelta >= MIN_STAGNATION_DELTA) {
+        // Normal thermal variation detected: reset stagnation baseline
+        stagnationStartTime = now;
+        stagnationBaseDHT   = tempDHT;
+        stagnationBaseDS    = tempDS;
+        stagnationError     = false;
+      }
+      else if (now - stagnationStartTime >= STAGNATION_TIME) {
+        // Flatline: No change >= 0.5°C over 5 full minutes!
+        stagnationError = true;
+        Serial.println("[ALERT] SENSOR FROZEN! No temperature variation >= 0.5C in 5 minutes.");
+      }
+
+      // ========== 3. CRITICAL TEMPERATURE (>45°C) ==========
+      veryHighTemperature = (tempDHT > VERY_HIGH_TEMP && tempDS > VERY_HIGH_TEMP);
 
       if (veryHighTemperature) {
         highTemperature = true;
         highTempTimerActive = false;
-
-        Serial.println("VERY HIGH TEMPERATURE!");
-        Serial.println("FAN ON - RED LED BLINKING!");
+        currentStatus = "VERY_HIGH_TEMP";
+        Serial.println("VERY HIGH TEMPERATURE! FAN ON - RED ALERT!");
       }
 
-      // ========== SENSOR MISMATCH ==========
-      if (difference > MAX_DIFFERENCE) {
-
+      // ========== 4. SENSOR MISMATCH (>5°C) ==========
+      else if (difference > MAX_DIFFERENCE) {
         if (!mismatchActive) {
-          mismatchActive = true;
+          mismatchActive    = true;
           mismatchStartTime = now;
-          faultConfirmed = false;
+          faultConfirmed    = false;
         }
-
-        Serial.println("SENSOR FAULT: Sensor mismatch!");
 
         highTempTimerActive = false;
+        if (!veryHighTemperature) highTemperature = false;
 
-        if (!veryHighTemperature) {
-          highTemperature = false;
-        }
-
-        if (now - mismatchStartTime >=
-            FAULT_CONFIRM_TIME) {
-
+        // 5-Minute Mismatch Confirmation (Reduced from 1 hour)
+        if (now - mismatchStartTime >= FAULT_CONFIRM_TIME) {
           faultConfirmed = true;
-
-          Serial.println("SENSOR FAULT: Mismatch over one hour!");
-
-          showLCD("SENSOR FAULT!", "Mismatch > 1 hour");
+          currentStatus  = "MISMATCH_FAULT";
+          Serial.println("SENSOR FAULT: Mismatch persisted over 5 minutes!");
+          showLCD("SENSOR FAULT!", "Mismatch > 5 min");
         }
-
         else {
-          unsigned long elapsed =
-              (now - mismatchStartTime) / 1000UL;
-
-          unsigned long remaining =
-              (FAULT_CONFIRM_TIME / 1000UL) - elapsed;
+          currentStatus = "MISMATCH_WARNING";
+          unsigned long elapsed   = (now - mismatchStartTime) / 1000UL;
+          unsigned long remaining = (FAULT_CONFIRM_TIME / 1000UL) - elapsed;
+          unsigned long mins      = remaining / 60UL;
+          unsigned long secs      = remaining % 60UL;
 
           char line2[17];
-
-          snprintf(line2, sizeof(line2),
-                   "Wait: %lu min",
-                   (remaining + 59UL) / 60UL);
-
-          showLCD("SENSOR FAULT!", line2);
+          snprintf(line2, sizeof(line2), "Wait: %lum %02lus", mins, secs);
+          showLCD("SENSOR MISMATCH", line2);
         }
       }
 
-      // ========== SENSOR READINGS AGREE ==========
+      // ========== 5. SENSORS AGREE NORMALLY ==========
       else {
         mismatchActive = false;
         faultConfirmed = false;
 
-        // Both sensors above 32 C starts confirmation timer.
-        if (tempDHT > HIGH_TEMP &&
-            tempDS > HIGH_TEMP) {
-
-          if (!highTempTimerActive &&
-              !highTemperature) {
-
+        // High Temp (>32°C on both sensors for 10s debounce)
+        if (tempDHT > HIGH_TEMP && tempDS > HIGH_TEMP) {
+          if (!highTempTimerActive && !highTemperature) {
             highTempTimerActive = true;
-            highTempStartTime = now;
+            highTempStartTime   = now;
           }
 
-          if (highTempTimerActive &&
-              now - highTempStartTime >=
-              HIGH_TEMP_CONFIRM_TIME) {
-
-            highTemperature = true;
+          if (highTempTimerActive && now - highTempStartTime >= HIGH_TEMP_CONFIRM_TIME) {
+            highTemperature     = true;
             highTempTimerActive = false;
-
+            currentStatus       = "HIGH_TEMP_ALERT";
             Serial.println("HIGH TEMPERATURE ALERT!");
+          } else {
+            currentStatus       = "TEMP_RISING";
           }
-        }
-
-        else {
+        } else {
           highTempTimerActive = false;
-
-          // Reset only when BOTH sensors fall below 31 C.
-          if (tempDHT < RESET_TEMP &&
-              tempDS < RESET_TEMP) {
-
+          // Hysteresis: Reset only when BOTH sensors cool below 31°C
+          if (tempDHT < RESET_TEMP && tempDS < RESET_TEMP) {
             highTemperature = false;
           }
         }
 
+        // Format LCD Display
         char line1[17];
         char line2[17];
+        snprintf(line1, sizeof(line1), "DHT:%4.1f DS:%4.1f", tempDHT, tempDS);
+        snprintf(line2, sizeof(line2), "Humidity:%2.0f%%", humidity);
 
-        snprintf(line1, sizeof(line1),
-                 "DHT:%4.1f DS:%4.1f",
-                 tempDHT, tempDS);
-
-        snprintf(line2, sizeof(line2),
-                 "Humidity:%2.0f%%",
-                 humidity);
-
-        if (veryHighTemperature) {
+        if (stagnationError) {
+          showLCD("SENSOR FROZEN!", "No change > 5m");
+          currentStatus = "FROZEN_SENSOR_ERROR";
+        }
+        else if (veryHighTemperature) {
           showLCD("VERY HIGH TEMP!", "FAN ON - DANGER");
         }
-
         else if (highTemperature) {
           showLCD("HIGH TEMP ALERT", line1);
-          Serial.println("HIGH TEMPERATURE ALERT!");
         }
-
         else if (highTempTimerActive) {
           showLCD("TEMP RISING", line1);
-          Serial.println("TEMPERATURE RISING");
         }
-
         else {
           showLCD(line1, line2);
-          Serial.println("Temperature monitoring normal.");
         }
       }
 
-      // Critical temperature display takes priority.
-      if (veryHighTemperature) {
-        showLCD("VERY HIGH TEMP!", "FAN ON - DANGER");
-      }
+      // Transmit valid readings via MQTT (or buffer if network offline)
+      sendTelemetry(tempDHT, tempDS, humidity, currentStatus);
     }
   }
 
   // ========== LED CONTROL ==========
-
-  // Critical temperature: red LED blinks
-  if (veryHighTemperature) {
+  // Red Alert: Critical temp, confirmed fault, or disconnected sensor
+  if (veryHighTemperature || faultConfirmed || sensorReadingFailed) {
     digitalWrite(GREEN_LED, LOW);
     digitalWrite(YELLOW_LED, LOW);
 
@@ -432,137 +489,76 @@ void loop() {
       digitalWrite(RED_LED, redLedState);
     }
   }
-
-  // Invalid reading or confirmed sensor fault
-  else if (faultConfirmed || sensorReadingFailed) {
-    digitalWrite(GREEN_LED, LOW);
-    digitalWrite(YELLOW_LED, LOW);
-
-    if (now - previousBlinkTime >= BLINK_INTERVAL) {
-      previousBlinkTime = now;
-      redLedState = !redLedState;
-      digitalWrite(RED_LED, redLedState);
-    }
-  }
-
-  // Sensor mismatch: short yellow flash every 2.5 seconds
-  else if (mismatchActive) {
+  // Yellow Warning: Sensor mismatch or Stagnation error
+  else if (mismatchActive || stagnationError) {
     digitalWrite(GREEN_LED, LOW);
     digitalWrite(RED_LED, LOW);
 
-    if (!yellowLedState &&
-        now - previousWarningFlash >=
-        WARNING_FLASH_INTERVAL) {
-
+    if (!yellowLedState && now - previousWarningFlash >= WARNING_FLASH_INTERVAL) {
       previousWarningFlash = now;
-      warningFlashStart = now;
-      yellowLedState = true;
-
+      warningFlashStart    = now;
+      yellowLedState       = true;
       digitalWrite(YELLOW_LED, HIGH);
     }
-
-    if (yellowLedState &&
-        now - warningFlashStart >=
-        WARNING_FLASH_DURATION) {
-
+    if (yellowLedState && now - warningFlashStart >= WARNING_FLASH_DURATION) {
       yellowLedState = false;
       digitalWrite(YELLOW_LED, LOW);
     }
   }
-
-  // Normal or high-temperature warning
+  // Normal or High Temperature Warning
   else {
-    bool yellowOn =
-        highTemperature || highTempTimerActive;
-
+    bool yellowOn = highTemperature || highTempTimerActive;
     digitalWrite(GREEN_LED, yellowOn ? LOW : HIGH);
     digitalWrite(YELLOW_LED, yellowOn ? HIGH : LOW);
     digitalWrite(RED_LED, LOW);
-
     redLedState = false;
     yellowLedState = yellowOn;
   }
 
   // ========== RELAY / FAN CONTROL ==========
-
   if (veryHighTemperature) {
-    // Critical temperature overrides sensor mismatch.
+    // Critical temperature overrides any sensor mismatch
     relayOn();
   }
-
-  else if (highTemperature &&
-           !faultConfirmed &&
-           !sensorReadingFailed &&
-           !mismatchActive) {
-
+  else if (highTemperature && !faultConfirmed && !sensorReadingFailed && !mismatchActive) {
     relayOn();
   }
-
   else {
     relayOff();
   }
 
   // ========== BUZZER CONTROL ==========
-
-  // Red alert: continuous buzzer
-  bool redAlert =
-      veryHighTemperature ||
-      faultConfirmed ||
-      sensorReadingFailed;
-
-  // Yellow warning: delayed intermittent beeping
-  bool yellowWarning =
-      highTemperature ||
-      highTempTimerActive ||
-      mismatchActive;
+  bool redAlert      = veryHighTemperature || faultConfirmed || sensorReadingFailed;
+  bool yellowWarning = highTemperature || highTempTimerActive || mismatchActive || stagnationError;
 
   if (redAlert) {
     digitalWrite(BUZZER_PIN, HIGH);
     buzzerState = true;
     buzzerWarningActive = false;
   }
-
   else if (yellowWarning) {
-
     if (!buzzerWarningActive) {
       buzzerWarningActive = true;
-      buzzerWarningStart = now;
-      previousBuzzerTime = now;
-      buzzerState = false;
-
+      buzzerWarningStart  = now;
+      previousBuzzerTime  = now;
+      buzzerState         = false;
       digitalWrite(BUZZER_PIN, LOW);
     }
 
-    // Wait 2 seconds before starting warning beeps
-    if (now - buzzerWarningStart >=
-        BUZZER_START_DELAY) {
-
-      // Begin a short beep every second
-      if (!buzzerState &&
-          now - previousBuzzerTime >=
-          BUZZER_BEEP_INTERVAL) {
-
+    if (now - buzzerWarningStart >= BUZZER_START_DELAY) {
+      if (!buzzerState && now - previousBuzzerTime >= BUZZER_BEEP_INTERVAL) {
         buzzerState = true;
         previousBuzzerTime = now;
-
         digitalWrite(BUZZER_PIN, HIGH);
       }
-
-      // End each beep after 200 milliseconds
-      if (buzzerState &&
-          now - previousBuzzerTime >=
-          BUZZER_BEEP_DURATION) {
-
+      if (buzzerState && now - previousBuzzerTime >= BUZZER_BEEP_DURATION) {
         buzzerState = false;
         digitalWrite(BUZZER_PIN, LOW);
       }
     }
   }
-
   else {
-    // Normal state: buzzer OFF
     digitalWrite(BUZZER_PIN, LOW);
-
     buzzerState = false;
     buzzerWarningActive = false;
   }
